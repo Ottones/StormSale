@@ -1,0 +1,27 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "fix/issue-88-test-aes-crypto-accuracy-suite",
+    "fix/issue-88-test-aes-crypto-accuracy-suite-r2",
+    "fix/issue-89-test-mock-web3-connection-logic",
+    "fix/issue-89-test-mock-web3-connection-logic-r2",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "fix/issue-88-test-aes-crypto-accuracy-suite": "main",
+    "fix/issue-88-test-aes-crypto-accuracy-suite-r2": "fix/issue-88-test-aes-crypto-accuracy-suite",
+    "fix/issue-89-test-mock-web3-connection-logic": "main",
+    "fix/issue-89-test-mock-web3-connection-logic-r2": "fix/issue-89-test-mock-web3-connection-logic",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "fix/issue-88-test-aes-crypto-accuracy-suite",
+    "fix/issue-89-test-mock-web3-connection-logic",
+    "origin",
+    "fix/issue-88-test-aes-crypto-accuracy-suite-r2",
+    "fix/issue-89-test-mock-web3-connection-logic-r2"
+  ]
+}
