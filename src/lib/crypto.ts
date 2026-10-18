@@ -1,120 +1,152 @@
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function fromBase64(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-const AIGS = { name: 'AES-GCM', length: 256 } as const;
-
 export async function generateAESKey(): Promise<CryptoKey> {
   return crypto.subtle.generateKey(
-    { name: AIGS.name, length: AIGS.length },
+    { name: "AES-GCM", length: 256 },
     true,
-    ['encrypt', 'decrypt'],
+    ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
   );
+}
+
+function bufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  if (typeof btoa !== "undefined") {
+    return btoa(binary);
+  }
+  return Buffer.from(bytes).toString("base64");
+}
+
+function base64ToBuffer(base64: string): ArrayBuffer {
+  if (typeof atob !== "undefined") {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+  const buf = Buffer.from(base64, "base64");
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }
 
 export async function encryptPayload(payload: object, aesKey: CryptoKey): Promise<string> {
-  const iv = crypto.getRandomValues(12);
-  const plaintext = encoder.encode(JSON.stringify(payload));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: AIGS.name, iv },
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoder = new TextEncoder();
+  const data = encoder.encode(JSON.stringify(payload));
+  const cipherText = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
     aesKey,
-    plaintext,
+    data,
   );
-  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+  const combined = new Uint8Array(iv.byteLength + cipherText.byteLength);
   combined.set(iv, 0);
-  combined.set(new Uint8Array(ciphertext), iv.length);
-  return toBase64(combined);
+  combined.set(new Uint8Array(cipherText), iv.byteLength);
+  return bufferToBase64(combined.buffer);
 }
 
 export async function decryptPayload(
   encryptedPayload: string,
   aesKey: CryptoKey,
 ): Promise<object> {
-  const combined = fromBase64(encryptedPayload);
-  if (combined.length < 13) {
-    throw new Error('Invalid encrypted payload');
-  }
+  const combined = new Uint8Array(base64ToBuffer(encryptedPayload));
   const iv = combined.slice(0, 12);
-  const ciphertext = combined.slice(12);
-  const plaintext = await crypto.subtle.decrypt(
-    { name: AIGS.name, iv },
+  const cipherText = combined.slice(12);
+  const plainText = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
     aesKey,
-    ciphertext,
+    cipherText,
   );
-  return JSON.parse(decoder.decode(plaintext));
+  const decoder = new TextDecoder();
+  return JSON.parse(decoder.decode(plainText)) as object;
 }
 
 export async function wrapAESKey(aesKey: CryptoKey, publicKey: string): Promise<string> {
-  const rawKey = await crypto.subtle.exportKey('raw', aesKey);
-  const rsaPublic = await crypto.subtle.importKey(
-    'spi',
-    fromBase64(publicKey),
-    { name: 'RSA-OAEP', hash: 'SHA-256' },
-    true,
-    ['encrypt'],
+  const rawKey = await crypto.subtle.exportKey("raw", aesKey);
+  const rsaPublicKey = await importRSAPublicKey(publicKey);
+  const wrapped = await crypto.subtle.encrypt(
+    { name: "RSA-OAEP" },
+    rsaPublicKey,
+    rawKey,
   );
-  const wrapped = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, rsaPublic, rawKey);
-  return toBase64(new Uint8Array(wrapped));
+  return bufferToBase64(wrapped);
 }
 
 export async function unwrapAESKey(wrappedKey: string, privateKey: string): Promise<CryptoKey> {
-  const rsaPrivate = await crypto.subtle.importKey(
-    'pkcs8',
-    fromBase64(privateKey),
-    { name: 'RSA-OAEP', hash: 'SHA-256' },
-    false,
-    ['decrypt'],
-  );
+  const rsaPrivateKey = await importRSAPrivateKey(privateKey);
   const rawKey = await crypto.subtle.decrypt(
-    { name: 'RSA-OAEP' },
-    rsaPrivate,
-    fromBase64(wrappedKey),
+    { name: "RSA-OAEP" },
+    rsaPrivateKey,
+    base64ToBuffer(wrappedKey),
   );
   return crypto.subtle.importKey(
-    'raw',
+    "raw",
     rawKey,
-    { name: AIGS.name, length: AIGS.length },
+    { name: "AES-GCM", length: 256 },
     true,
-    ['encrypt', 'decrypt'],
+    ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
   );
 }
 
-// Derives a deterministic RSA public key from a wallet address.
-// This is a placeholder key derivation strategy for testing purposes.
-export async function getPublicKeyForAddress(address: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(address));
-  const keyPair = await crypto.subtle.generateKey(
-    {
-      name: 'RSA-OAEP',
-      modulelength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: 'SHA-256',
-    },
-    true,
-    ['encrypt', 'decrypt'],
-  );
-  // Mix the address digest into the key material to make it deterministic for tests.
-  const spti = await crypto.subtle.exportKey('spi', keyPair.publicKey);
-  const out = new Uint8Array(spti.byteLength);
-  out.set(new Uint8Array(spti), 0);
-  for (let i = 0; i < out.length; i++) {
-    out[i] ^= digest[i % digest.byteLength];
+async function importRSAPublicKey(publicKey: string): Promise<CryptoKey> {
+  const normalized = normalizeKey(publicKey);
+  try {
+    return await crypto.subtle.importKey(
+      "spki",
+      base64ToBuffer(normalized),
+      { name: "RSA-OAEP", hash: "SHA-256" },
+      true,
+      ["encrypt"],
+    );
+  } catch {
+    return crypto.subtle.importKey(
+      "jwk",
+      JSON.parse(normalized),
+      { name: "RSA-OAEP", hash: "SHA-256" },
+      true,
+      ["encrypt"],
+    );
   }
-  return toBase64(out);
+}
+
+async function importRSAPrivateKey(privateKey: string): Promise<CryptoKey> {
+  const normalized = normalizeKey(privateKey);
+  try {
+    return await crypto.subtle.importKey(
+      "pkcs8",
+      base64ToBuffer(normalized),
+      { name: "RSA-OAEP", hash: "SHA-256" },
+      true,
+      ["decrypt"],
+    );
+  } catch {
+    return crypto.subtle.importKey(
+      "jwk",
+      JSON.parse(normalized),
+      { name: "RSA-OAEP", hash: "SHA-256" },
+      true,
+      ["decrypt"],
+    );
+  }
+}
+
+function normalizeKey(key: string): string {
+  const trimmed = key.trim();
+  if (trimmed.startsWith("{")) {
+    return trimmed;
+  }
+  return trimmed.replace(/-----BEGIN [A-Z]+-----/g, "").replace(/-----END [A-Z]+-----/g, "").replace(/\s+/g, "");
+}
+
+export async function getPublicKeyForAddress(address: string): Promise<string> {
+  const response = await fetch(`/api/keys/${encodeURIComponent(address)}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch public key for ${address}: ${response.status}`);
+  }
+  const data = (await response.json()) as { publicKey?: string };
+  if (!data.publicKey) {
+    throw new Error(`No public key found for ${address}`);
+  }
+  return data.publicKey;
 }
