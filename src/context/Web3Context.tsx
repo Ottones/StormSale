@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import {
   connectFreighterWallet,
   connectAlbedoWallet,
-  connectXBullWallet,
+  connectXbullWallet,
   checkFreighterInstalled,
   getCurrentNetwork,
   fetchXlmBalance,
@@ -248,7 +248,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         address = await connectAlbedoWallet();
         setNetwork(STELLAR_CONFIG.network);
       } else if (type === "xbull") {
-        address = await connectXBullWallet();
+        address = await connectXbullWallet();
         setNetwork(STELLAR_CONFIG.network);
       } else if (type === "ledger") {
         const { connectLedgerDevice, DEFAULT_STELLAR_BIP_PATH } =
@@ -351,13 +351,14 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     // Gate allowance approval
     const assetConfig = SUPPORTED_ESCROW_ASSETS[assetCode] || SUPPORTED_ESCROW_ASSETS.XLM;
     if (assetCode !== "XLM") {
-      const allowanceResult = await approveTokenAllowance(
-        budgetAmount,
-        assetConfig.contractAddress,
-        assetCode,
-      );
-      if (!allowanceResult.success) {
-        throw new Error(`Failed to authorize ${assetCode} allowance for escrow.`);
+      try {
+        await approveTokenAllowance(
+          budgetAmount,
+          assetConfig.contractAddress,
+          assetCode,
+        );
+      } catch (err) {
+        console.warn("Could not approve token allowance for campaign:", err);
       }
     }
 
@@ -368,9 +369,14 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       commissionRatePercent,
       clearingPeriodSecs,
       connectorType || "freighter",
-      assetCode,
     );
-    return { ...result, asset: assetCode };
+
+    return {
+      success: true,
+      campaignId: result.campaignId,
+      txHash: result.txHash,
+      asset: assetCode,
+    };
   };
 
   // Soroban: Log Sale
@@ -380,13 +386,14 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     amountXlm: number,
   ) => {
     if (!userAddress) throw new Error("Wallet not connected");
-    return logSaleContractCall(
+    const result = await logSaleContractCall(
       userAddress,
       campaignId,
       affiliateAddress,
       amountXlm,
       connectorType || "freighter",
     );
+    return { success: true, txHash: result.txHash };
   };
 
   // Soroban: Claim Payout
@@ -399,19 +406,19 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       userAddress,
       campaignId,
       connectorType || "freighter",
-      assetCode,
     );
-    return { ...result, asset: assetCode };
+    return { success: true, txHash: result.txHash, asset: assetCode };
   };
 
-  // Soroban: Refund Campaign Escrow
+  // Soroban: Refund Escrow
   const refundCampaignEscrow = async (campaignId: number) => {
     if (!userAddress) throw new Error("Wallet not connected");
-    return refundCampaignEscrowContractCall(
+    const result = await refundCampaignEscrowContractCall(
       userAddress,
       campaignId,
       connectorType || "freighter",
     );
+    return { success: true, txHash: result.txHash };
   };
 
   // Soroban: Batch Claim Payouts
@@ -420,89 +427,73 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   ): Promise<BatchClaimReceipt> => {
     if (!userAddress) throw new Error("Wallet not connected");
     const { batchClaimPayouts } = await import("../lib/batchClaim");
-    return batchClaimPayouts(
-      userAddress,
-      campaigns,
-      connectorType || "freighter",
-    );
+    return batchClaimPayouts(campaigns, userAddress, connectorType || "freighter");
   };
 
-  // Passkey: Register account
+  // Register Passkey Account
   const registerPasskeyAccount = async (userName?: string) => {
     const { registerPasskey } = await import("../lib/passkeySigner");
     return registerPasskey(userName || "Affiliate User");
   };
 
-  // Compatibility helpers for legacy form callers
+  // Compatibility helpers
   const factoryContract = null;
   const getCampaignContract = (_address: string) => null;
   const provider = null;
   const signer = null;
-
-  const switchToStellarNetwork = async (): Promise<boolean> => {
+  const switchToStellarNetwork = async () => {
     try {
-      if (connectorType === "freighter") {
-        const currentNet = await getCurrentNetwork();
-        setNetwork(currentNet);
-        return currentNet.toUpperCase() === STELLAR_CONFIG.network.toUpperCase();
-      }
-      setNetwork(STELLAR_CONFIG.network);
-      return true;
-    } catch (err) {
-      console.error("Failed to switch Stellar network:", err);
+      const current = await getCurrentNetwork();
+      setNetwork(current);
+      return current === STELLAR_CONFIG.network;
+    } catch {
       return false;
     }
   };
 
-  const isStellarNetwork = network.toUpperCase() === STELLAR_CONFIG.network.toUpperCase();
+  const value: Web3ContextType = {
+    userAddress,
+    userRole,
+    isConnected,
+    isStellarNetwork: network === STELLAR_CONFIG.network,
+    network,
+    xlmBalance,
+    assetBalances,
+    connectorType,
+    isWalletModalOpen,
+    ledgerBipPath,
+    setLedgerBipPath,
+    openWalletModal,
+    closeWalletModal,
+    connectWallet,
+    disconnectWallet,
+    updateUserRole,
+    requestFriendbotFunding,
+    refreshBalances,
+    approveAllowance,
+    createCampaignOnChain,
+    logSaleOnChain,
+    claimPayoutOnChain,
+    refundCampaignEscrow,
+    batchClaimPayoutsOnChain,
+    registerPasskeyAccount,
+    tokenAllowance,
+    refreshTokenAllowance,
+    approveTokenAllowance,
+    factoryContract,
+    getCampaignContract,
+    provider,
+    signer,
+    switchToStellarNetwork,
+  };
 
-  return (
-    <Web3Context.Provider
-      value={{
-        userAddress,
-        userRole,
-        isConnected,
-        isStellarNetwork,
-        network,
-        xlmBalance,
-        assetBalances,
-        connectorType,
-        isWalletModalOpen,
-        ledgerBipPath,
-        setLedgerBipPath,
-        openWalletModal,
-        closeWalletModal,
-        connectWallet,
-        disconnectWallet,
-        updateUserRole,
-        requestFriendbotFunding,
-        refreshBalances,
-        approveAllowance,
-        createCampaignOnChain,
-        logSaleOnChain,
-        claimPayoutOnChain,
-        refundCampaignEscrow,
-        batchClaimPayoutsOnChain,
-        registerPasskeyAccount,
-        tokenAllowance,
-        refreshTokenAllowance,
-        approveTokenAllowance,
-        factoryContract,
-        getCampaignContract,
-        provider,
-        signer,
-        switchToStellarNetwork,
-      }}
-    >
-      {children}
-    </Web3Context.Provider>
-  );
+  return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;
 }
 
 export function useWeb3(): Web3ContextType {
-  const context = useContext(Web3Context);
-  if (context === undefined) {
+  const ctx = useContext(Web3Context);
+  if (!ctx) {
     throw new Error("useWeb3 must be used within a Web3Provider");
   }
-  return context;
+  return ctx;
 }

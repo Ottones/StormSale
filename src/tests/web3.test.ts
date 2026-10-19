@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi} from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, vi} from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import type { ReactNode } from "react";
@@ -94,20 +94,20 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  mockCheckFreighterInstalled.mockResolved(true);
-  mockConnectFreighter.mockResolved(FREIGHTER_ADDRESS);
-  mockConnectAlbedo.mockResolved(ALBEDO_ADDRESS);
-  mockConnectXbull.mockResolved(XBULL_ADDRESS);
-  mockGetCurrentNetwork.mockResolved("TESTNET");
-  mockFetchXlmBalance.mockResolved("500.00");
-  mockFetchAssetBalances.mockResolved({ XLM: "500.00", USDC: "10.00", EURC: "0.00" });
-  mockGetTokenAllowanceQuery.mockResolved(0);
-  mockRegisterUser.mockResolved({ role: "affiliate" });
-  mockPurgeOnLogout.mockResolved(undefined);
-  mockConnectLedgerDevice.mockResolved({ address: "GLEDGER1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ" });
-  mockLoadEncryptedPasskeyVault.mockResolved([]);
-  mockRegisterPasskey.mockResolved({ stellarAddress: "GPSSKEY1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ" });
-  mockAuthenticateWithPasskey.mockResolved({ record: { stellarAddress: "GPSSKEY1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ" } });
+  mockCheckFreighterInstalled.mockResolvedValue(true);
+  mockConnectFreighter.mockResolvedValue(FREIGHTER_ADDRESS);
+  mockConnectAlbedo.mockResolvedValue(ALBEDO_ADDRESS);
+  mockConnectXbull.mockResolvedValue(XBULL_ADDRESS);
+  mockGetCurrentNetwork.mockResolvedValue("TESTNET");
+  mockFetchXlmBalance.mockResolvedValue("500.00");
+  mockFetchAssetBalances.mockResolvedValue({ XLM: "500.00", USDC: "10.00", EURC: "0.00" });
+  mockGetTokenAllowanceQuery.mockResolvedValue(0);
+  mockRegisterUser.mockResolvedValue({ role: "affiliate" });
+  mockPurgeOnLogout.mockResolvedValue(undefined);
+  mockConnectLedgerDevice.mockResolvedValue({ address: "GLEDGER1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ" });
+  mockLoadEncryptedPasskeyVault.mockResolvedValue([]);
+  mockRegisterPasskey.mockResolvedValue({ stellarAddress: "GPSSKEY1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ" });
+  mockAuthenticateWithPasskey.mockResolvedValue({ record: { stellarAddress: "GPSSKEY1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ" } });
 });
 
 afterEach(() => {
@@ -140,12 +140,12 @@ describe("useWeb3 - connection lifecycle", () => {
     expect(result.current.userAddress).toBe(FREITHTER_ADDRESS);
     expect(result.current.connectorType).toBe("freighter");
     expect(result.current.network).toBe("TESTNET");
-    expect(mockFetchXlmBalance).toHaveBeenCalledWith(FREIGHTER_ADDRESS);
-    expect(mockRegisterUser).toHaveBeenCalledWith(FREIGHTER_ADDRESS);
+    expect(mockFetchXlmBalance).toHaveBeenCalledWith(FREITHTER_ADDRESS);
+    expect(mockRegisterUser).toHaveBeenCalledWith(FREITHTER_ADDRESS);
   });
 
   it("rejects Freighter connection when extension is not installed", async () => {
-    mockCheckFreighterInstalled.mockResolved(false);
+    mockCheckFreighterInstalled.mockResolvedValue(false);
     const { result } = renderHook(() => useWeb3(), { wrapper });
 
     await act(async () => {
@@ -175,7 +175,7 @@ describe("useWeb3 - connection lifecycle", () => {
       await result.current.connectWallet("xbull");
     });
 
-    expect(mockConnectXBull).toHaveBeenCalled();
+    expect(mockConnectXbull).toHaveBeenCalled();
     expect(result.current.userAddress).toBe(XBULL_ADDRESS);
     expect(result.current.connectorType).toBe("xbull");
   });
@@ -222,7 +222,7 @@ describe("useWeb3 - connection lifecycle", () => {
 
 describe("useWeb3 - chain switch logic", () => {
   it("reflects the network reported by Freighter on connect", async () => {
-    mockGetCurrentNetwork.mockResolved("PUBLIC");
+    mockGetCurrentNetwork.mockResolvedValue("PUBLIC");
     const { result } = renderHook(() => useWeb3(), { wrapper });
 
     await act(async () => {
