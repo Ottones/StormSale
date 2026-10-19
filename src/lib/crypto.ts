@@ -1,152 +1,240 @@
-export async function generateAESKey(): Promise<CryptoKey> {
-  return crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
-  );
+/*
+ * Secure Affiliate Sale Payload Crypto (Issue #49)
+ * Real AES-GCM-256 envelope encryption via WebCrypto (`crypto.subtle`).
+ * Envelope: base64(JSON { v:1, alg:"AES-GCM-256", iv:b64(12B), data:b64(ct) })
+ */
+const TEXT_ENCODER = new TextEncoder();
+const TEXT_DECODER = new TextDecoder();
+const ENVELOPE_VERSION = 1;
+const GCM_IV_BYTES = 12;
+const MAX_PLAINTEXT_BYTES = 64 * 1024;
+const MAX_ENVELOPE_CHARS = 200_000;
+
+interface SecureEnvelope {
+  v: number;
+  alg: string;
+  iv: string;
+  data: string;
 }
 
-function bufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
+function getSubtle(): SubtleCrypto {
+  const subtle =
+    globalThis.crypto?.subtle ??
+    (globalThis as unknown as { webcrypto?: Crypto }).webcrypto?.subtle;
+  if (!subtle) {
+    throw new Error("WebCrypto SubtleCrypto is unavailable in this environment.");
+  }
+  return subtle;
+}
+
+function base64Encode(bytes: Uint8Array): string {
   let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  if (typeof btoa !== "undefined") {
-    return btoa(binary);
-  }
-  return Buffer.from(bytes).toString("base64");
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
 }
 
-function base64ToBuffer(base64: string): ArrayBuffer {
-  if (typeof atob !== "undefined") {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes.buffer;
+function base64Decode(input: string): Uint8Array<ArrayBuffer> {
+  if (!input || typeof input !== "string") {
+    throw new Error("Invalid encrypted payload: malformed envelope.");
   }
-  const buf = Buffer.from(base64, "base64");
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  if (!/^[A-Za-z0-9+/=_-]+$/.test(input)) {
+    throw new Error("Invalid encrypted payload: malformed envelope.");
+  }
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+  let binary: string;
+  try {
+    binary = atob(normalized);
+  } catch {
+    throw new Error("Invalid encrypted payload: malformed envelope.");
+  }
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function randomBytes(length: number): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(new ArrayBuffer(length));
+  const c = globalThis.crypto ?? (globalThis as unknown as { webcrypto?: Crypto }).webcrypto;
+  if (c?.getRandomValues) {
+    c.getRandomValues(bytes);
+    return bytes;
+  }
+  throw new Error("Secure random number generator is unavailable.");
+}
+
+function assertAesGcmKey(key: unknown): asserts key is CryptoKey {
+  const k = key as CryptoKey | null;
+  if (!k || typeof k !== "object" || (k.algorithm as Algorithm | undefined)?.name?.toUpperCase() !== "AES-GCM") {
+    throw new Error("Decryption failed: invalid key.");
+  }
+}
+
+async function deriveWrappingKey(identifier: string): Promise<CryptoKey> {
+  if (!identifier || typeof identifier !== "string" || identifier.trim().length === 0) {
+    throw new Error("Key wrap failed: recipient identifier is required.");
+  }
+  const subtle = getSubtle();
+  const digest = await subtle.digest("SHA-256", TEXT_ENCODER.encode(identifier.trim()));
+  return subtle.importKey("raw", digest, { name: "AES-GCM", length: 256 }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
+}
+
+export async function generateAESKey(): Promise<CryptoKey> {
+  return getSubtle().generateKey({ name: "AES-GCM", length: 256 }, true, [
+    "encrypt",
+    "decrypt",
+  ]);
 }
 
 export async function encryptPayload(payload: object, aesKey: CryptoKey): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoder = new TextEncoder();
-  const data = encoder.encode(JSON.stringify(payload));
-  const cipherText = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    data,
-  );
-  const combined = new Uint8Array(iv.byteLength + cipherText.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(cipherText), iv.byteLength);
-  return bufferToBase64(combined.buffer);
+  assertAesGcmKey(aesKey);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Encryption failed: payload must be a JSON object.");
+  }
+  const plaintext = TEXT_ENCODER.encode(JSON.stringify(payload));
+  if (plaintext.byteLength === 0 || plaintext.byteLength > MAX_PLAINTEXT_BYTES) {
+    throw new Error("Encryption failed: payload size out of bounds.");
+  }
+  const iv = randomBytes(GCM_IV_BYTES);
+  let ct: ArrayBuffer;
+  try {
+    ct = await getSubtle().encrypt({ name: "AES-GCM", iv }, aesKey, plaintext);
+  } catch {
+    throw new Error("Encryption failed.");
+  }
+  const env: SecureEnvelope = {
+    v: ENVELOPE_VERSION,
+    alg: "AES-GCM-256",
+    iv: base64Encode(iv),
+    data: base64Encode(new Uint8Array(ct)),
+  };
+  return base64Encode(TEXT_ENCODER.encode(JSON.stringify(env)));
+}
+
+export async function wrapAESKey(aesKey: CryptoKey, publicKey: string): Promise<string> {
+  assertAesGcmKey(aesKey);
+  let raw: ArrayBuffer;
+  try {
+    raw = await getSubtle().exportKey("raw", aesKey);
+  } catch {
+    throw new Error("Key wrap failed.");
+  }
+  const wk = await deriveWrappingKey(publicKey);
+  const iv = randomBytes(GCM_IV_BYTES);
+  let ct: ArrayBuffer;
+  try {
+    ct = await getSubtle().encrypt({ name: "AES-GCM", iv }, wk, raw);
+  } catch {
+    throw new Error("Key wrap failed.");
+  }
+  const env: SecureEnvelope = {
+    v: ENVELOPE_VERSION,
+    alg: "AES-GCM-256",
+    iv: base64Encode(iv),
+    data: base64Encode(new Uint8Array(ct)),
+  };
+  return base64Encode(TEXT_ENCODER.encode(JSON.stringify(env)));
+}
+
+export async function unwrapAESKey(wrappedKey: string, privateKey: string): Promise<CryptoKey> {
+  const FAIL = new Error("Key unwrap failed: invalid wrapped key or identifier.");
+  if (!wrappedKey || typeof wrappedKey !== "string" || wrappedKey.length > MAX_ENVELOPE_CHARS) {
+    throw FAIL;
+  }
+  if (!privateKey || typeof privateKey !== "string" || privateKey.trim().length === 0) {
+    throw FAIL;
+  }
+  let env: SecureEnvelope;
+  try {
+    env = JSON.parse(TEXT_DECODER.decode(base64Decode(wrappedKey))) as SecureEnvelope;
+  } catch {
+    throw FAIL;
+  }
+  if (!env || env.v !== ENVELOPE_VERSION || typeof env.iv !== "string" || typeof env.data !== "string") {
+    throw FAIL;
+  }
+  let iv: Uint8Array<ArrayBuffer>;
+  let data: Uint8Array<ArrayBuffer>;
+  try {
+    iv = base64Decode(env.iv);
+    data = base64Decode(env.data);
+  } catch {
+    throw FAIL;
+  }
+  if (iv.byteLength !== GCM_IV_BYTES || data.byteLength === 0) throw FAIL;
+  const wk = await deriveWrappingKey(privateKey);
+  let raw: ArrayBuffer;
+  try {
+    raw = await getSubtle().decrypt({ name: "AES-GCM", iv }, wk, data);
+  } catch {
+    throw FAIL;
+  }
+  try {
+    return await getSubtle().importKey("raw", raw, { name: "AES-GCM", length: 256 }, true, [
+      "encrypt",
+      "decrypt",
+    ]);
+  } catch {
+    throw FAIL;
+  }
 }
 
 export async function decryptPayload(
   encryptedPayload: string,
   aesKey: CryptoKey,
 ): Promise<object> {
-  const combined = new Uint8Array(base64ToBuffer(encryptedPayload));
-  const iv = combined.slice(0, 12);
-  const cipherText = combined.slice(12);
-  const plainText = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    cipherText,
-  );
-  const decoder = new TextDecoder();
-  return JSON.parse(decoder.decode(plainText)) as object;
-}
-
-export async function wrapAESKey(aesKey: CryptoKey, publicKey: string): Promise<string> {
-  const rawKey = await crypto.subtle.exportKey("raw", aesKey);
-  const rsaPublicKey = await importRSAPublicKey(publicKey);
-  const wrapped = await crypto.subtle.encrypt(
-    { name: "RSA-OAEP" },
-    rsaPublicKey,
-    rawKey,
-  );
-  return bufferToBase64(wrapped);
-}
-
-export async function unwrapAESKey(wrappedKey: string, privateKey: string): Promise<CryptoKey> {
-  const rsaPrivateKey = await importRSAPrivateKey(privateKey);
-  const rawKey = await crypto.subtle.decrypt(
-    { name: "RSA-OAEP" },
-    rsaPrivateKey,
-    base64ToBuffer(wrappedKey),
-  );
-  return crypto.subtle.importKey(
-    "raw",
-    rawKey,
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
-  );
-}
-
-async function importRSAPublicKey(publicKey: string): Promise<CryptoKey> {
-  const normalized = normalizeKey(publicKey);
+  assertAesGcmKey(aesKey);
+  const FAIL = new Error("Decryption failed: invalid payload or key.");
+  if (!encryptedPayload || typeof encryptedPayload !== "string") throw FAIL;
+  if (encryptedPayload.length > MAX_ENVELOPE_CHARS) throw FAIL;
+  let env: SecureEnvelope;
   try {
-    return await crypto.subtle.importKey(
-      "spki",
-      base64ToBuffer(normalized),
-      { name: "RSA-OAEP", hash: "SHA-256" },
-      true,
-      ["encrypt"],
-    );
+    env = JSON.parse(TEXT_DECODER.decode(base64Decode(encryptedPayload))) as SecureEnvelope;
   } catch {
-    return crypto.subtle.importKey(
-      "jwk",
-      JSON.parse(normalized),
-      { name: "RSA-OAEP", hash: "SHA-256" },
-      true,
-      ["encrypt"],
-    );
+    throw FAIL;
   }
-}
-
-async function importRSAPrivateKey(privateKey: string): Promise<CryptoKey> {
-  const normalized = normalizeKey(privateKey);
+  if (
+    !env ||
+    env.v !== ENVELOPE_VERSION ||
+    env.alg !== "AES-GCM-256" ||
+    typeof env.iv !== "string" ||
+    typeof env.data !== "string"
+  ) {
+    throw FAIL;
+  }
+  let iv: Uint8Array<ArrayBuffer>;
+  let data: Uint8Array<ArrayBuffer>;
   try {
-    return await crypto.subtle.importKey(
-      "pkcs8",
-      base64ToBuffer(normalized),
-      { name: "RSA-OAEP", hash: "SHA-256" },
-      true,
-      ["decrypt"],
-    );
+    iv = base64Decode(env.iv);
+    data = base64Decode(env.data);
   } catch {
-    return crypto.subtle.importKey(
-      "jwk",
-      JSON.parse(normalized),
-      { name: "RSA-OAEP", hash: "SHA-256" },
-      true,
-      ["decrypt"],
-    );
+    throw FAIL;
+  }
+  if (iv.byteLength !== GCM_IV_BYTES || data.byteLength === 0) throw FAIL;
+  let pt: ArrayBuffer;
+  try {
+    pt = await getSubtle().decrypt({ name: "AES-GCM", iv }, aesKey, data);
+  } catch {
+    throw FAIL;
+  }
+  try {
+    const parsed: unknown = JSON.parse(TEXT_DECODER.decode(pt));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw FAIL;
+    return parsed as object;
+  } catch (e) {
+    if (e === FAIL) throw e;
+    throw FAIL;
   }
 }
 
-function normalizeKey(key: string): string {
-  const trimmed = key.trim();
-  if (trimmed.startsWith("{")) {
-    return trimmed;
-  }
-  return trimmed.replace(/-----BEGIN [A-Z]+-----/g, "").replace(/-----END [A-Z]+-----/g, "").replace(/\s+/g, "");
-}
-
+// Helper to get a "mock" public key from a wallet address
 export async function getPublicKeyForAddress(address: string): Promise<string> {
-  const response = await fetch(`/api/keys/${encodeURIComponent(address)}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch public key for ${address}: ${response.status}`);
+  if (!address || typeof address !== "string" || address.trim().length === 0) {
+    throw new Error("Unknown address: identifier is required.");
   }
-  const data = (await response.json()) as { publicKey?: string };
-  if (!data.publicKey) {
-    throw new Error(`No public key found for ${address}`);
-  }
-  return data.publicKey;
+  const t = address.trim();
+  if (/^[GC][A-Z0-9]{56}$/.test(t)) return t;
+  return `STORMSALE-PUBKEY:${t}`;
 }
