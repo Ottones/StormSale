@@ -236,5 +236,5 @@ export async function getPublicKeyForAddress(address: string): Promise<string> {
   }
   const t = address.trim();
   if (/^[GC][A-Z0-9]{55}$/.test(t)) return t;
-  return `STORMSALE-PUBKEY:${t}`;
+  return `STORMSALE-PUBYEY:${t}`;
 }
