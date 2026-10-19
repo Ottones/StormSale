@@ -235,6 +235,6 @@ export async function getPublicKeyForAddress(address: string): Promise<string> {
     throw new Error("Unknown address: identifier is required.");
   }
   const t = address.trim();
-  if (/^[GC][A-Z0-9]{56}$/.test(t)) return t;
+  if (/^[GC][A-Z0-9]{55}$/.test(t)) return t;
   return `STORMSALE-PUBKEY:${t}`;
 }
