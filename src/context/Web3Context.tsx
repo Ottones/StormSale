@@ -123,7 +123,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   });
   const [tokenAllowance, setTokenAllowance] = useState<number>(0);
   const [connectorType, setConnectorType] = useState<WalletType | null>(null);
-  const [ledgerBipPath, setLedgerBipPath] = useState<string>("44'/148/0'");
+  const [ledgerBipPath, setLedgerBipPath] = useState<string>("44'/148'0'");
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
 
   const openWalletModal = () => setIsWalletModalOpen(true);
@@ -275,7 +275,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         setNetwork(STELLAR_CONFIG.network);
       } else {
         // Mock fallback demo account with 10,000 XLM
-        address = "GASTORMSALE7TESTNET7AFQ%LIATE7MERCHANT7ESCROW7XLM77777";
+        address = "GASTORMSALE7TESTNET7AFQ-LIATE7MERCHANT7ESCROW7XLM77777";
         setNetwork("TESTNET");
         setXlmBalance("10000.00");
       }
@@ -348,19 +348,17 @@ export function Web3Provider({ children }: { children: ReactNode }) {
 
     // Escrow locking interacts with corresponding Stellar Asset Contract:
     // If deploying with a SAC stablecoin (USDC, EURC), authorize token allowance on SAC contract for escrow spender
-    // Gate allowance approval to supported connectors
-    const isSupportedConnector =
-      connectorType === "freighter" || connectorType === "albedo" || connectorType === "xbull";
-    if (assetCode !== "XLM" && isSupportedConnector) {
-      const assetConfig = SUPPORTED_ESCROW_ASSETS[assetCode] || SUPPORTED_ESCROW_ASSETS.XLM;
-      await approveTokenContractCall(
-        userAddress,
+    // Gate allowance approval
+    const assetConfig = SUPPORTED_ESCROW_ASSETS[assetCode] || SUPPORTED_ESCROW_ASSETS.XLM;
+    if (assetCode !== "XLM") {
+      const allowanceResult = await approveTokenAllowance(
         budgetAmount,
-        STELLAR_CONFIG.escrowContractId,
-        connectorType,
         assetConfig.contractAddress,
-        assetConfig.decimals,
+        assetCode,
       );
+      if (!allowanceResult.success) {
+        throw new Error(`Failed to authorize ${assetCode} allowance for escrow.`);
+      }
     }
 
     const result = await createCampaignContractCall(
@@ -369,8 +367,8 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       budgetAmount,
       commissionRatePercent,
       clearingPeriodSecs,
-      assetCode,
       connectorType || "freighter",
+      assetCode,
     );
     return { ...result, asset: assetCode };
   };
@@ -400,8 +398,8 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     const result = await claimPayoutContractCall(
       userAddress,
       campaignId,
-      assetCode,
       connectorType || "freighter",
+      assetCode,
     );
     return { ...result, asset: assetCode };
   };
@@ -422,63 +420,83 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   ): Promise<BatchClaimReceipt> => {
     if (!userAddress) throw new Error("Wallet not connected");
     const { batchClaimPayouts } = await import("../lib/batchClaim");
-    return batchClaimPayouts(userAddress, campaigns, connectorType || "freighter");
+    return batchClaimPayouts(
+      userAddress,
+      campaigns,
+      connectorType || "freighter",
+    );
   };
 
-  // Passkey: Register Account
+  // Passkey: Register account
   const registerPasskeyAccount = async (userName?: string) => {
     const { registerPasskey } = await import("../lib/passkeySigner");
     return registerPasskey(userName || "Affiliate User");
   };
 
-  // Switch to Stellar Network (compatibility)
+  // Compatibility helpers for legacy form callers
+  const factoryContract = null;
+  const getCampaignContract = (_address: string) => null;
+  const provider = null;
+  const signer = null;
+
   const switchToStellarNetwork = async (): Promise<boolean> => {
     try {
+      if (connectorType === "freighter") {
+        const currentNet = await getCurrentNetwork();
+        setNetwork(currentNet);
+        return currentNet.toUpperCase() === STELLAR_CONFIG.network.toUpperCase();
+      }
       setNetwork(STELLAR_CONFIG.network);
       return true;
     } catch (err) {
-      console.warn("Could not switch to Stellar network:", err);
+      console.error("Failed to switch Stellar network:", err);
       return false;
     }
   };
 
-  const value: Web3ContextType = {
-    userAddress,
-    userRole,
-    isConnected,
-    isStellarNetwork: network === STELLAR_CONFIG.network,
-    network,
-    xlmBalance,
-    assetBalances,
-    connectorType,
-    isWalletModalOpen,
-    ledgerBipPath,
-    setLedgerBipPath,
-    openWalletModal,
-    closeWalletModal,
-    connectWallet,
-    disconnectWallet,
-    updateUserRole,
-    requestFriendbotFunding,
-    refreshBalances,
-    approveAllowance,
-    createCampaignOnChain,
-    logSaleOnChain,
-    claimPayoutOnChain,
-    refundCampaignEscrow,
-    batchClaimPayoutsOnChain,
-    registerPasskeyAccount,
-    tokenAllowance,
-    refreshTokenAllowance,
-    approveTokenAllowance,
-    factoryContract: null,
-    getCampaignContract: () => null,
-    provider: null,
-    signer: null,
-    switchToStellarNetwork,
-  };
+  const isStellarNetwork = network.toUpperCase() === STELLAR_CONFIG.network.toUpperCase();
 
-  return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;
+  return (
+    <Web3Context.Provider
+      value={{
+        userAddress,
+        userRole,
+        isConnected,
+        isStellarNetwork,
+        network,
+        xlmBalance,
+        assetBalances,
+        connectorType,
+        isWalletModalOpen,
+        ledgerBipPath,
+        setLedgerBipPath,
+        openWalletModal,
+        closeWalletModal,
+        connectWallet,
+        disconnectWallet,
+        updateUserRole,
+        requestFriendbotFunding,
+        refreshBalances,
+        approveAllowance,
+        createCampaignOnChain,
+        logSaleOnChain,
+        claimPayoutOnChain,
+        refundCampaignEscrow,
+        batchClaimPayoutsOnChain,
+        registerPasskeyAccount,
+        tokenAllowance,
+        refreshTokenAllowance,
+        approveTokenAllowance,
+        factoryContract,
+        getCampaignContract,
+        provider,
+        signer,
+        switchToStellarNetwork,
+      }}
+    >
+      {children}
+    </Web3Context.Provider>
+  );
 }
 
 export function useWeb3(): Web3ContextType {
@@ -488,5 +506,3 @@ export function useWeb3(): Web3ContextType {
   }
   return context;
 }
-
-export default Web3Context;
