@@ -1,35 +1,17 @@
 import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
+import react from "@vite/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// https://vitejs.dev/config/
-export default defineConfig({
+// https://vite.dev/config/
+export default defineConfig( {
   plugins: [react(), tailwindcss()],
-  test: {
-    environment: "jsdom",
-    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
-    globals: true,
-    coverage: {
-      provider: "v8",
-      reporter: ["text", "json-summary", "json", "html"],
-      reportsDirectory: "./coverage",
-      include: ["src/**/*.{ts,tsx}"],
-      exclude: [
-        "src/**/*.test.{ts,tsx}",
-        "src/tests/**",
-        "src/types/**",
-        "src/main.tsx",
-        "src/assets/**",
-      ],
-    },
-  },
   resolve: {
     dedupe: ["react", "react-dom"],
     preserveSymlinks: true,
   },
   build: {
     rollupOptions: {
-      external: ["@ledgerhq/hw-transport-webhid", "@ledgerhq/hw-app-str"],
+      external: ["@ledgerhq/hw-transport-webhd", "@ledgerhq/hw-app-str"],
       output: {
         manualChunks: (id) => {
           if (id.includes("@stellar/stellar-sdk") || id.includes("@stellar/freighter-api")) {
@@ -43,6 +25,25 @@ export default defineConfig({
           }
         },
       },
+    },
+  },
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: ["./tests/setup.ts"],
+    include: ["tests/**/*.{test,spec}.{ts,tsx}", "src/**/*.{test,spec}.{ts,tsx}"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary", "json", "html"],
+      reportsDirectory: "./coverage",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: [
+        "src/**/*.test.{ts,tsx}",
+        "src/tests/**",
+        "src/types/**",
+        "src/main.tsx",
+        "src/assets/**",
+      ],
     },
   },
 });
