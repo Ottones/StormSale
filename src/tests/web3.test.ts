@@ -141,7 +141,7 @@ describe("useWeb3 - connection lifecycle", () => {
     expect(result.current.connectorType).toBe("freighter");
     expect(result.current.network).toBe("TESTNET");
     expect(mockFetchXlmBalance).toHaveBeenCalledWith(FREIGHTER_ADDRESS);
-    expect(mockRegisterUser).toHaveBeenCalledWith(FREITHTER_ADDRESS);
+    expect(mockRegisterUser).toHaveBeenCalledWith(FREIGHTER_ADDRESS);
   });
 
   it("rejects Freighter connection when extension is not installed", async () => {

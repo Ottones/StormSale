@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi} from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import type { ReactNode } from "react";
@@ -32,7 +32,7 @@ vi.mock("../../src/lib/storage", () => ({
 import * as stellarLib from "../../src/lib/stellar";
 import * as apiLib from "../../src/utils/api";
 import * as storageLib from "../../src/lib/storage";
-import { Web3Provider, useWebContext } from "../../src/context/Web3Context";
+import { Web3Provider } from "../../src/context/Web3Context";
 import { useWeb3 } from "../../src/hooks/useWeb3";
 import { STELLAR_CONFIG } from "../../src/config/stellar";
 
@@ -227,11 +227,5 @@ describe("useWeb3 / Web3Context", () => {
 
     await waitFor(() => expect(result.current.tokenAllowance).toBe(123));
     expect(mockedStellar.getTokenAllowanceQuery).toHaveBeenCalled();
-  });
-});
-
-describe("useWeb3 hook re-export", () => {
-  it("returns the same context hook as useWebContext", () => {
-    expect(useWeb3).toBe(useWebContext);
   });
 });
