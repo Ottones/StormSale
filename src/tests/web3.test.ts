@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, vi} from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import type { ReactNode } from "react";
@@ -72,13 +72,13 @@ vi.mock("../lib/passkeySigner", () => ({
 // Test helpers
 // ----------------------------------------------------------------------------
 
-const FREITHTER_ADDRESS = "GFREIGHTER1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ";
+const FREIGHTER_ADDRESS = "GFREIGHTER1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ";
 const ALBEDO_ADDRESS = "GALBEDO1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZZ";
 const XBULL_ADDRESS = "GXBULL1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ";
 const MOCK_ADDRESS = "GASTORMSALE7TESTNET7AFFILIATE7MERCHANT7ESCROW7XLM77777";
 
 function wrapper(children: ReactNode) {
-  return createElement(Web3Provider, null, children);
+  return createElement(Web3Provider, null, children as any);
 }
 
 let Web3Provider: any;
@@ -137,10 +137,10 @@ describe("useWeb3 - connection lifecycle", () => {
     expect(mockConnectFreighter).toHaveBeenCalled();
     expect(mockGetCurrentNetwork).toHaveBeenCalled();
     expect(result.current.isConnected).toBe(true);
-    expect(result.current.userAddress).toBe(FREITHTER_ADDRESS);
+    expect(result.current.userAddress).toBe(FREIGHTER_ADDRESS);
     expect(result.current.connectorType).toBe("freighter");
     expect(result.current.network).toBe("TESTNET");
-    expect(mockFetchXlmBalance).toHaveBeenCalledWith(FREITHTER_ADDRESS);
+    expect(mockFetchXlmBalance).toHaveBeenCalledWith(FREIGHTER_ADDRESS);
     expect(mockRegisterUser).toHaveBeenCalledWith(FREITHTER_ADDRESS);
   });
 
@@ -259,7 +259,7 @@ describe("useWeb3 - chain switch logic", () => {
 
     let switchResult: boolean | undefined;
     await act(async () => {
-      switchResult = await result.current.switchToStellarNode();
+      switchResult = await result.current.switchToStellarNetwork();
     });
 
     expect(switchResult).toBe(true);

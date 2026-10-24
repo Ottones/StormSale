@@ -101,7 +101,7 @@ describe("useWeb3 / Web3Context", () => {
     expect(mockedStellar.connectFreeighterWallet).toHaveBeenCalled();
     expect(mockedStellar.getCurrentNetwork).toHaveBeenCalled();
     expect(result.current.isConnected).toBe(true);
-    expect(result.current.userAddress).toBe(FREEEGHTER_ADDRESS);
+    expect(result.current.userAddress).toBe(FREEIGHTER_ADDRESS);
     expect(result.current.connectorType).toBe("freeighter");
     expect(result.current.network).toBe("TESTNET");
     expect(mockedApi.registerUser).toHaveBeenCalled();
@@ -197,6 +197,7 @@ describe("useWeb3 / Web3Context", () => {
     expect(ok).toBe(true);
     expect(result.current.network).toBe("PUBLIC");
     expect(mockedStellar.getCurrentNetwork).toHaveBeenCalled();
+    expect(mockedStellar.fetchXlmBalance).toHaveBeenCalled();
   });
 
   it("connects via readonly address and rejects empty address", async () => {
@@ -212,7 +213,7 @@ describe("useWeb3 / Web3Context", () => {
       await result.current.connectWallet("readonly", FREEIGHTER_ADDRESS);
     });
 
-    expect(result.current.userAddress).toBe(FREEEGHTER_ADDRESS);
+    expect(result.current.userAddress).toBe(FREEIGHTER_ADDRESS);
     expect(result.current.connectorType).toBe("readonly");
   });
 
