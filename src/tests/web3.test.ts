@@ -77,8 +77,8 @@ const ALBEDO_ADDRESS = "GALBEDO1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZZ";
 const XBULL_ADDRESS = "GXBULL1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZZ";
 const MOCK_ADDRESS = "GASTORMSALE7TESTNET7AFFILIATE7MERCHANT7ESCROW7XLM77777";
 
-function wrapper(children: ReactNode) {
-  return createElement(Web3Provider, null, children as any);
+function wrapper({ children }: { children: ReactNode }) {
+  return createElement(Web3Provider, null, children);
 }
 
 let Web3Provider: any;
