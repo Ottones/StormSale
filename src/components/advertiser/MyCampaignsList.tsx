@@ -267,7 +267,7 @@ export const MyCampaignsList = () => {
   const [formConfig, setFormConfig] = useState<AutoTopUpConfig | null>(null);
   const [customAllowanceAmount, setCustomAllowanceAmount] = useState<string>("5000");
 
-  const {
+      const {
     refundCampaignEscrow,
     topUpCampaignEscrow,
     tokenAllowance,

@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import type { ReactNode } from "react";
 import {
-  connectFreeighterWallet,
+  connectFreighterWallet,
   connectAlbedoWallet,
   connectXbullWallet,
-  checkFreeighterInstalled,
+  checkFreighterInstalled,
   getCurrentNetwork,
   fetchXlmBalance,
   fetchAssetBalances,
@@ -22,7 +22,6 @@ import type { WalletType } from "../lib/stellar";
 import { STELLAR_CONFIG, SUPPORTED_ESCROW_ASSETS } from "../config/stellar";
 import type { SupportedEscrowAssetCode } from "../config/stellar";
 import { registerUser } from "../utils/api";
-import { dispatchWebhookEvent } from "../lib/webhookEngine";
 import { assertNotSanctioned } from "../lib/sanctions";
 import type { ClaimableCampaignItem, BatchClaimReceipt } from "../lib/batchClaim";
 import type { SplitPlan } from "../lib/commissionSplit";
@@ -64,7 +63,7 @@ export interface Web3ContextType {
     tokenAddress: string,
     spenderAddress: string,
     amount: number,
-  ) => Promise<{ success: boolean; tyHash?: string }>;
+  ) => Promise<{ success: boolean; txHash?: string }>;
 
   // Soroban Smart Contract Operations
   createCampaignOnChain: (
@@ -84,7 +83,7 @@ export interface Web3ContextType {
     campaignId: number,
     affiliateAddress: string,
     amountXlm: number,
-  ) => Promise<{ success: boolean; tyHash?: string }>;
+  ) => Promise<{ success: boolean; txHash?: string }>;
 
   claimPayoutOnChain: (
     campaignId: number,
@@ -119,7 +118,7 @@ export interface Web3ContextType {
     amount: number,
     spender?: string,
     assetCode?: SupportedEscrowAssetCode,
-  ) => Promise<{ success: boolean; tyHash?: string; allowance?: number }>;
+  ) => Promise<{ success: boolean; txHash?: string; allowance?: number }>;
 
   // Stellar SEP-0030 Multi-Signature Campaign Escrow
   multiSigInfo: MultiSigAccountInfo | null;
@@ -298,7 +297,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         tokenAddress,
         spenderAddress,
         amount,
-        connectorType || "freeighter",
+        connectorType || "freighter",
       );
     },
     [userAddress, connectorType],
@@ -334,7 +333,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     async (amount: number, spender?: string, assetCode: SupportedEscrowAssetCode = "XLM") => {
       if (!userAddress) throw new Error("Wallet not connected");
       const isSupportedConnector =
-        connectorType === "freeighter" || connectorType === "albedo" || connectorType === "xbull";
+        connectorType === "freighter" || connectorType === "albedo" || connectorType === "xbull";
       if (!isSupportedConnector) {
         if (connectorType !== "mock") {
           throw new Error(`Allowance approval is not supported for ${connectorType} wallets.`);
@@ -371,20 +370,20 @@ export function Web3Provider({ children }: { children: ReactNode }) {
 
   // Multi-Wallet Stellar Connection: Freeighter, Albedo, xBull, Ledger, Passkey, Mock
   const connectWallet = async (
-    type: WalletType = "freeighter",
+    type: WalletType = "freighter",
     customAddress?: string,
     derivationPath?: string,
   ) => {
     try {
       let address = "";
-      if (type === "freeighter") {
-        const isInstalled = await checkFreeighterInstalled();
+      if (type === "freighter") {
+        const isInstalled = await checkFreighterInstalled();
         if (!isInstalled) {
           throw new Error(
             "Freeighter extension is not installed. If you are on a mobile device, please select Albedo (Web Wallet) or Demo Account.",
           );
         }
-        address = await connectFreeighterWallet();
+        address = await connectFreighterWallet();
         const currentNet = await getCurrentNetwork();
         setNetwork(currentNet);
       } else if (type === "albedo") {
@@ -505,7 +504,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       budgetAmount,
       commissionRatePercent,
       clearingPeriodSecs,
-      connectorType || "freeighter",
+      connectorType || "freighter",
       assetConfig.contractAddress,
       assetConfig.decimals,
     );
@@ -529,7 +528,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       campaignId,
       affiliateAddress,
       amountXlm,
-      connectorType || "freeighter",
+      connectorType || "freighter",
     );
   };
 
@@ -549,7 +548,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     const result = await claimPayoutContractCall(
       userAddress,
       campaignId,
-      connectorType || "freeighter",
+      connectorType || "freighter",
       assetConfig.contractAddress,
       assetConfig.decimals,
     );
@@ -566,7 +565,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     return refundCampaignEscrowContractCall(
       userAddress,
       campaignId,
-      connectorType || "freeighter",
+      connectorType || "freighter",
     );
   };
 
@@ -636,7 +635,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     const res = await executeBatchCommissionClaim(
       userAddress,
       campaigns,
-      connectorType || "freeighter",
+      connectorType || "freighter",
       splitPlan ?? null,
       autoSwap,
     );
@@ -656,7 +655,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   const signer = null;
   const switchToStellarNetwork = async (): Promise<boolean> => {
     try {
-      if (connectorType === "freeighter") {
+      if (connectorType === "freighter") {
         const currentNet = await getCurrentNetwork();
         setNetwork(currentNet);
         return currentNet.toUpperCase().includes("TESTNET") ? STELLAR_CONFIG.network === "TESTNET" : true;

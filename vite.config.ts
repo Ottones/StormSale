@@ -1,5 +1,4 @@
 import { defineConfig } from "vitest/config";
-import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { visualizer } from "rollup-plugin-visualizer";
