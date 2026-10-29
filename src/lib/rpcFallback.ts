@@ -393,6 +393,9 @@ export class RpcFallbackManager {
       reason,
     };
     this.failoverHistory.push(failoverEvent);
+    if (this.failoverHistory.length > 100) {
+      this.failoverHistory.shift();
+    }
 
     this.notifyListeners({
       type: "failover",
@@ -405,8 +408,23 @@ export class RpcFallbackManager {
   }
 
   /**
-   * Notifies all subscribed listeners of a state change.
+   * Registers a listener for failover, health, and active endpoint change events.
+   * Returns an unsubscribe function.
    */
+  public subscribe(
+    listener: (event: {
+      type: "failover" | "health_check" | "active_changed";
+      active: RpcEndpointStatus;
+      endpoints: RpcEndpointStatus[];
+      eventDetails?: RpcFailoverEvent;
+    }) => void,
+  ): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
   private notifyListeners(event: {
     type: "failover" | "health_check" | "active_changed";
     active: RpcEndpointStatus;
@@ -417,7 +435,7 @@ export class RpcFallbackManager {
       try {
         listener(event);
       } catch {
-        // Listener errors must not break failover flow
+        // Listener errors must not break failover processing
       }
     });
   }
